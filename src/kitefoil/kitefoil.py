@@ -58,32 +58,6 @@ def angle_difference_180(a, b):
     theta = abs(a-b)%180
     return theta if theta<=90 else 180-theta
 
-assert angle_difference_180(2,5)==3
-assert angle_difference_180(5,2)==3
-assert angle_difference_180(2,359)==3
-assert angle_difference_180(359,2)==3
-assert angle_difference_180(180,0)==0
-assert angle_difference_180(90,0)==90
-assert angle_difference_180(0, 91)==89
-
-# This chooses a wind direction that is ~90 degrees off direction of travel. Doesn't work as well
-def calculate_wind_direction_legacy(bearing):
-    # If I can kite in one direction, I can also kite 180 degrees off that direction (roughly)
-    bearing = np.concatenate([bearing, (bearing + 180) % 360])
-    # Todo - mirror'd look
-    
-    # Lazy way to optimize this function ...
-    df = pd.DataFrame({"x": list(range(180))})
-    df["y"]=0
-
-    for i in df.index:
-        x = df["x"][i]
-        df.at[i, "y"] = np.mean([angle_difference_180(x, b)**2 for b in bearing])
-    
-    s = df.sort_values(by="y", ascending=False)
-    wind_direction = s["x"].iloc[0] + 180 # Assume wind is ~westerly vs. ~easterly (generally true in SF Bay Area)
-    return wind_direction
-
 # This chooses a wind direction that is in the middle of the range of directions that are almost-never-travelled
 def calculate_wind_direction(bearing):
     (bearing_density, bins) = np.histogram(bearing, bins=range(360))
