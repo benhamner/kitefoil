@@ -54,14 +54,6 @@ def angle_difference(a, b):
     theta = abs(a-b)%360
     return theta if theta<=180 else 360-theta
 
-assert angle_difference(2,5)==3
-assert angle_difference(5,2)==3
-assert angle_difference(2,359)==3
-assert angle_difference(359,2)==3
-assert angle_difference(180,0)==180
-assert angle_difference(0, 181)==179
-assert angle_difference(160, 350)==170
-
 def angle_difference_180(a, b):
     theta = abs(a-b)%180
     return theta if theta<=90 else 180-theta
