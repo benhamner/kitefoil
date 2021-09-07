@@ -1,1 +1,1 @@
-from .kitefoil import *
+from .kitefoil import KiteFoilSession, calculate_initial_compass_bearing, angle_difference, angle_difference_180
