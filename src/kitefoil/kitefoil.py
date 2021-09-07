@@ -163,15 +163,7 @@ class KiteFoilSession():
         df.loc[df["bearing"]>180, "wind"]=df["bearing"][df["bearing"]>180]-90
         df['time_elapsed_sec'] = np.cumsum(df['time_diff'])-1
         
-        # Old method
-        # This may be 180 degrees off wind direction
-        #wind_dir = np.arctan2(np.mean(np.sin(df["wind"]*np.pi/180)), np.mean(np.cos(df["wind"]*np.pi/180)))*180/np.pi
-        # Add correction if so
-        #wind_dir += 180
-        
         # ideally this would be based on when is_moving=1, but doing this way because I don't have is_moving in the DF yet
-        wind_dir_old = calculate_wind_direction_legacy(df[df["speed_mph"]>params["moving_threshold_mph"]]["bearing"].values)
-        self.wind_dir_old = wind_dir_old
         wind_dir = calculate_wind_direction(df[df["speed_mph"]>params["moving_threshold_mph"]]["bearing"].values)
         
         self.calculated_wind_dir = wind_dir

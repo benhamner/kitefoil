@@ -20,5 +20,8 @@ class TestKitefoil(unittest.TestCase):
         self.assertEqual(kitefoil.angle_difference_180(90,0), 90)
         self.assertEqual(kitefoil.angle_difference_180(0,91), 89)
 
+    def test_load_session(self):
+        session = kitefoil.KiteFoilSession("gpx/activity_7422746557.gpx")
+
 if __name__ == '__main__':
     unittest.main()
