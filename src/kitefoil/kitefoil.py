@@ -177,6 +177,9 @@ class KiteFoilSession():
         if "wind_dir" in params:
             wind_dir=params["wind_dir"]
         self.wind_dir=wind_dir
+        df["vmg_mph"] = np.cos((df["bearing"]-wind_dir)*np.pi/180)*df["speed_mph"]
+        df["speed_kts"] = df["speed_mph"]/1.1507794480235
+        df["vmg_kts"] = df["vmg_mph"]/1.1507794480235
                
         df["upwind"] = [1 if angle_difference(wind_dir, bearing)<90 else -1 for bearing in df["bearing"]]
         df["tack_raw"] = [1 if ((bearing-wind_dir) % 360)<180 else -1 for bearing in df["bearing"]]
