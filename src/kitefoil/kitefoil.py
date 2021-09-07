@@ -58,7 +58,7 @@ def angle_difference_180(a, b):
     return theta if theta<=90 else 180-theta
 
 # This chooses a wind direction that is in the middle of the range of directions that are almost-never-travelled
-def calculate_wind_direction(bearing):
+def calculate_wind_direction(bearing, speed):
     (bearing_density, bins) = np.histogram(bearing, bins=range(360))
     # Normalize so that if I spent an equal time going in each direction, each bin would have a density of 1.0
     bearing_density = list(bearing_density/np.sum(bearing_density)*360)
@@ -96,8 +96,14 @@ def calculate_wind_direction(bearing):
         candidate_2 = (segments[1][0] + offset + int(segments[1][1]/2) + 180) % 360
         candidate = int((candidate+candidate_2)/2)
 
-    # prefer westerly directions over easterly for bay area
-    if candidate < 180:
+    # top N% downwind vmg should be greater than top N% upwind vmg
+    # if that's not true, then I probably have my wind direction reversed
+    vmg = np.cos((bearing-candidate)*np.pi/180)*speed
+    top2percent_loc = int(len(bearing)/100)
+    partition = np.partition(vmg, [top2percent_loc, -top2percent_loc])
+    top_vmg_upwind = partition[-top2percent_loc]
+    top_vmg_downwind = partition[top2percent_loc]
+    if np.abs(top_vmg_downwind)<np.abs(top_vmg_upwind):
         candidate+=180
     
     return candidate
@@ -164,7 +170,8 @@ class KiteFoilSession():
         df['time_elapsed_sec'] = np.cumsum(df['time_diff'])-1
         
         # ideally this would be based on when is_moving=1, but doing this way because I don't have is_moving in the DF yet
-        wind_dir = calculate_wind_direction(df[df["speed_mph"]>params["moving_threshold_mph"]]["bearing"].values)
+        moving_locs = df["speed_mph"]>params["moving_threshold_mph"]
+        wind_dir = calculate_wind_direction(df[moving_locs]["bearing"].values, df[moving_locs]["speed_mph"].values)
         
         self.calculated_wind_dir = wind_dir
         if "wind_dir" in params:
