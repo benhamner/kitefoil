@@ -104,7 +104,7 @@ def calculate_wind_direction(bearing, speed):
     top_vmg_upwind = partition[-top2percent_loc]
     top_vmg_downwind = partition[top2percent_loc]
     if np.abs(top_vmg_downwind)<np.abs(top_vmg_upwind):
-        candidate+=180
+        candidate = (candidate + 180) % 360
     
     return candidate
 
@@ -130,11 +130,12 @@ class KiteFoilSession():
                 params[param] = self.default_params[param]
         
         data = gpx.tracks[0].segments[0].points
-        df = pd.DataFrame(columns=['lon', 'lat', 'alt', 'time'])
-        
-        for point in data:
-            df = df.append({'lon': point.longitude, 'lat' : point.latitude, 'alt' : point.elevation, 'time' : point.time.astimezone(tz=pytz.timezone("US/Pacific"))}, ignore_index=True)
-        
+        point_list = [[point.longitude,
+                       point.latitude,
+                       point.elevation,
+                       point.time.astimezone(tz=pytz.timezone("US/Pacific"))] for point in data]
+        df = pd.DataFrame(data=point_list, columns=['lon', 'lat', 'alt', 'time'])
+
         time_dif = [1]
         distance_cumulative = [0]
         distance_step = [0]
