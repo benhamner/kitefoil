@@ -49,8 +49,73 @@ def calculate_initial_compass_bearing(pointA, pointB):
 
     return compass_bearing
 
+def maneuvers(speed_mph, tack_raw, upwind, params):
+    cnt = 0
+    stopped_segments = []
+    moving_segments = []
+    crashes = []
+    starboard_crashes = []
+    port_crashes = []
+    window = range(params["window_size"])
+    is_moving = np.zeros(len(speed_mph))
+    tack = np.zeros(len(speed_mph))
+    is_moving[:params["window_size"]] = 1 if (np.mean(speed_mph[window]) >= (params["stopped_threshold_mph"] + params["moving_threshold_mph"])/2) else 0
+    tack[:params["window_size"]] = np.median(tack_raw[window])
+
+    crash_data = []
+
+    for i in range(1, len(speed_mph)):
+        window = range(min(i, len(speed_mph)-params["window_size"]), min(i+params["window_size"], len(speed_mph)))
+        window_speed_mph = np.mean(speed_mph[window])
+        if is_moving[i-1]==1:
+            is_moving[i]=1
+            if (tack[i-1]!=tack_raw[i]) and (len(set(tack_raw[window]))==1): # only update tack if consistent across the window
+                # if we're updating tack, scroll back that update earlier in time
+                tack[max(i-params["window_size"]+1,0):i] = np.median(tack_raw[window]) 
+            tack[i] = tack[i-1]
+            if window_speed_mph>params["stopped_threshold_mph"]:
+                cnt += 1
+            else:
+                is_moving[i]=0
+                moving_segments.append(cnt)
+                crashes.append(i)
+                is_moving[max(i-2*params["window_size"],0):i]=0 # Reset time before crash to not moving to clean up data
+                
+                tack_before_crash = tack[max(i-2*params["window_size"],0)]
+                upwind_before_crash = upwind[max(i-2*params["window_size"],0)]
+                if tack_before_crash==0:
+                    tack_before_crash = np.median([x for x in tack[max(i-2*params["window_size"],0):i] if x!=0])
+                if tack_before_crash==1: # port tack
+                    port_crashes.append(i)
+                else:
+                    starboard_crashes.append(i)
+
+                crash_data.append([i,
+                                    "port" if tack_before_crash==1 else "starboard",
+                                    "upwind" if upwind_before_crash==1 else "downwind"])
+                
+                tack[max(i-2*params["window_size"],0):i]=0 # Reset time before crash to not on a tack to clean up data
+                cnt=1
+        else:
+            if window_speed_mph<params["moving_threshold_mph"]:
+                cnt += 1
+            else:
+                is_moving[i] = 1
+                stopped_segments.append(cnt)
+                cnt=1
+
+    return {
+        "is_moving": is_moving,
+        "tack": tack,
+        "crashes": crashes,
+        "crash_data": crash_data,
+        "port_crashes": port_crashes,
+        "starboard_crashes": starboard_crashes,
+        "stopped_segments": stopped_segments, 
+        "moving_segments": moving_segments}
+
 # This chooses a wind direction that is in the middle of the range of directions that are almost-never-travelled
-def calculate_wind_direction(bearing, speed):
+def wind_direction(bearing, speed):
     (bearing_density, bins) = np.histogram(bearing, bins=range(360))
     # Normalize so that if I spent an equal time going in each direction, each bin would have a density of 1.0
     bearing_density = list(bearing_density/np.sum(bearing_density)*360)
@@ -148,7 +213,7 @@ class KiteFoilSession():
         # ideally this would be based on when is_moving=1, but doing this way because I don't have is_moving in the DF yet
         moving_locs = df["speed_mph"]>params["moving_threshold_mph"]
         
-        wind_dir = calculate_wind_direction(df[moving_locs]["bearing"].values, df[moving_locs]["speed_mph"].values)
+        wind_dir = wind_direction(df[moving_locs]["bearing"].values, df[moving_locs]["speed_mph"].values)
         
         self.calculated_wind_dir = wind_dir
         if "wind_dir" in params:
@@ -161,63 +226,15 @@ class KiteFoilSession():
         df["upwind"] = np.sign(df["vmg_mph"])
         df["tack_raw"] = [1 if ((bearing-wind_dir) % 360)<180 else -1 for bearing in df["bearing"]]
         
-        cnt = 0
-        stopped_segments = []
-        moving_segments = []
-        crashes = []
-        starboard_tack_crashes = []
-        port_tack_crashes = []
-        window = range(params["window_size"])
-        speed_mph = df["speed_mph"].values
-        tack_raw = df["tack_raw"].values
-        is_moving = np.zeros(len(df))
-        tack = np.zeros(len(df))
-        is_moving[:params["window_size"]] = 1 if (np.mean(speed_mph[window]) >= (params["stopped_threshold_mph"] + params["moving_threshold_mph"])/2) else 0
-        tack[:params["window_size"]] = np.median(tack_raw[window])
-
-        crash_data = []
-
-        for i in range(1, len(df)):
-            window = range(min(i, len(df)-params["window_size"]), min(i+params["window_size"], len(df)))
-            window_speed_mph = np.mean(df["speed_mph"][window])
-            if is_moving[i-1]==1:
-                is_moving[i]=1
-                if (tack[i-1]!=tack_raw[i]) and (len(set(tack_raw[window]))==1): # only update tack if consistent across the window
-                    # if we're updating tack, scroll back that update earlier in time
-                    tack[max(i-params["window_size"]+1,0):i] = np.median(tack_raw[window]) 
-                tack[i] = tack[i-1]
-                if window_speed_mph>params["stopped_threshold_mph"]:
-                    cnt += 1
-                else:
-                    is_moving[i]=0
-                    moving_segments.append(cnt)
-                    crashes.append(i)
-                    is_moving[max(i-2*params["window_size"],0):i]=0 # Reset time before crash to not moving to clean up data
-                    
-                    tack_before_crash = tack[max(i-2*params["window_size"],0)]
-                    upwind_before_crash = df.loc[max(i-2*params["window_size"],0),"upwind"]
-                    if tack_before_crash==0:
-                        tack_before_crash = np.median([x for x in tack[max(i-2*params["window_size"],0):i] if x!=0])
-                    if tack_before_crash==1: # port tack
-                        port_tack_crashes.append(i)
-                    else:
-                        starboard_tack_crashes.append(i)
-
-                    crash_data.append([i,
-                                       "port" if tack_before_crash==1 else "starboard",
-                                       "upwind" if upwind_before_crash==1 else "downwind"])
-                    
-                    tack[max(i-2*params["window_size"],0):i]=0 # Reset time before crash to not on a tack to clean up data
-                    cnt=1
-            else:
-                if window_speed_mph<params["moving_threshold_mph"]:
-                    cnt += 1
-                else:
-                    is_moving[i] = 1
-                    stopped_segments.append(cnt)
-                    cnt=1
-        df["is_moving"] = is_moving
-        df["tack"] = tack
+        m = maneuvers(df["speed_mph"].values, df["tack_raw"].values, df["upwind"].values, params)
+        df["is_moving"] = m["is_moving"]
+        df["tack"] = m["tack"]
+        crashes = m["crashes"]
+        crash_data = m["crash_data"]
+        port_crashes = m["port_crashes"]
+        starboard_crashes = m["starboard_crashes"]
+        stopped_segments = m["stopped_segments"]
+        moving_segments = m["moving_segments"]
 
         crashes_df = pd.DataFrame(data=crash_data, columns=["Loc", "Tack", "Upwind"])
         self.crashes_df = crashes_df
@@ -262,8 +279,8 @@ class KiteFoilSession():
         self.stopped_segments = stopped_segments
         self.moving_segments = moving_segments
         self.crashes = crashes
-        self.port_tack_crashes = port_tack_crashes
-        self.starboard_tack_crashes = starboard_tack_crashes
+        self.port_crashes = port_crashes
+        self.starboard_crashes = starboard_crashes
         self.tacks = tacks
         self.jibes = jibes
         
@@ -273,15 +290,15 @@ class KiteFoilSession():
         stats["duration"] = df["time"].max()-df["time"].min()
         num_crashes = len(stopped_segments)
         stats["num_crashes"] = num_crashes
-        stats["num_starboard_tack_crashes"] = len(starboard_tack_crashes)
-        stats["num_port_tack_crashes"] = len(port_tack_crashes)
+        stats["num_starboard_tack_crashes"] = len(starboard_crashes)
+        stats["num_port_tack_crashes"] = len(port_crashes)
         time_elapsed_minutes = (max(df["time"])-min(df["time"])).seconds/60.0
         stats["time_elapsed_minutes"] = time_elapsed_minutes
         stats["minutes_per_crash"] = time_elapsed_minutes / num_crashes
         successful_transitions = len(self.transitions_port)+len(self.transitions_starboard)
         stats["transition_success_percent"] = 100.0*successful_transitions/(successful_transitions+num_crashes)
-        stats["starboard_transition_success_percent"] = 100.0*len(self.transitions_starboard)/(len(self.starboard_tack_crashes)+len(transitions_starboard))
-        stats["port_transition_success_percent"] = 100.0*len(self.transitions_port)/(len(self.port_tack_crashes)+len(self.transitions_port))
+        stats["starboard_transition_success_percent"] = 100.0*len(self.transitions_starboard)/(len(self.starboard_crashes)+len(transitions_starboard))
+        stats["port_transition_success_percent"] = 100.0*len(self.transitions_port)/(len(self.port_crashes)+len(self.transitions_port))
         stats["num_starboard_to_port_transitions"] = len(transitions_starboard)
         stats["num_port_to_starboard_transitions"] = len(transitions_port)
         self.stats=stats
