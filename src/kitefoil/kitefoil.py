@@ -197,6 +197,7 @@ class KiteFoilSession():
         tack = np.median(df["tack_raw"][window])
         df["is_moving"] = 0
         df["tack"] = 0
+        crash_data = []
 
         for i in range(len(df)):
             window_queue.popleft()
@@ -218,12 +219,17 @@ class KiteFoilSession():
                     df.loc[max(i-2*params["window_size"],0):i,"is_moving"]=0 # Reset time before crash to not moving to clean up data
                     
                     tack_before_crash = df.loc[max(i-2*params["window_size"],0),"tack"]
+                    upwind_before_crash = df.loc[max(i-2*params["window_size"],0),"upwind"]
                     if tack_before_crash==0:
                         tack_before_crash = np.median([x for x in df.loc[max(i-2*params["window_size"],0):i,"tack"] if x!=0])
                     if tack_before_crash==1: # port tack
                         port_tack_crashes.append(i)
                     else:
                         starboard_tack_crashes.append(i)
+
+                    crash_data.append([i,
+                                       "port" if tack_before_crash==1 else "starboard",
+                                       "upwind" if upwind_before_crash==1 else "downwind"])
                     
                     df.loc[max(i-2*params["window_size"],0):i,"tack"]=0 # Reset time before crash to not on a tack to clean up data
                     cnt=1
@@ -234,7 +240,9 @@ class KiteFoilSession():
                     is_moving=True
                     stopped_segments.append(cnt)
                     cnt=1
-
+        
+        crashes_df = pd.DataFrame(data=crash_data, columns=["Loc", "Tack", "Upwind"])
+        self.crashes_df = crashes_df
         df["segment"] = 1
         this_segment = 1
         for i in range(1, len(df)):
@@ -313,9 +321,13 @@ class KiteFoilSession():
         fig.add_trace(go.Scattermapbox(lat=self.df["lat"][self.tacks], lon=self.df["lon"][self.tacks], 
                       mode='markers',
                       marker=go.scattermapbox.Marker(size=10),
-                      text="Tack"))
+                      name="Tack"))
         fig.add_trace(go.Scattermapbox(lat=self.df["lat"][self.jibes], lon=self.df["lon"][self.jibes], 
-                mode='markers',
-                marker=go.scattermapbox.Marker(size=10),
-                text="Jibe"))
+                      mode='markers',
+                      marker=go.scattermapbox.Marker(size=10),
+                      name="Jibe"))
+        fig.add_trace(go.Scattermapbox(lat=self.df["lat"][self.crashes], lon=self.df["lon"][self.crashes], 
+                      mode='markers',
+                      marker=go.scattermapbox.Marker(size=10),
+                      name="Crash"))
         fig.show()
