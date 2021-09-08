@@ -122,6 +122,9 @@ class KiteFoilSession():
         self.process_gpx_file(gpx, params)
     
     def process_gpx_file(self, gpx, params):
+        import time
+        print("Start")
+        t = time.time()
         if params is None:
             params = {}
         
@@ -136,6 +139,7 @@ class KiteFoilSession():
                        point.time.astimezone(tz=pytz.timezone("US/Pacific"))] for point in data]
 
         df = pd.DataFrame(data=point_list, columns=['lon', 'lat', 'alt', 'time'])
+        print("142 Elapsed: %s" % (time.time()-t))
 
         df["distance_step"] = [0] + [distance.distance((data[i-1].latitude, data[i-1].longitude),
                                                        (data[i].latitude, data[i].longitude)).m
@@ -153,7 +157,10 @@ class KiteFoilSession():
         
         # ideally this would be based on when is_moving=1, but doing this way because I don't have is_moving in the DF yet
         moving_locs = df["speed_mph"]>params["moving_threshold_mph"]
+        
+        print("161 Elapsed: %s" % (time.time()-t))
         wind_dir = calculate_wind_direction(df[moving_locs]["bearing"].values, df[moving_locs]["speed_mph"].values)
+        print("163 Elapsed: %s" % (time.time()-t))
         
         self.calculated_wind_dir = wind_dir
         if "wind_dir" in params:
@@ -165,6 +172,7 @@ class KiteFoilSession():
                
         df["upwind"] = [1 if angle_difference(wind_dir, bearing)<90 else -1 for bearing in df["bearing"]]
         df["tack_raw"] = [1 if ((bearing-wind_dir) % 360)<180 else -1 for bearing in df["bearing"]]
+        print("175 Elapsed: %s" % (time.time()-t))
         
         cnt = 0
         stopped_segments = []
@@ -172,37 +180,41 @@ class KiteFoilSession():
         crashes = []
         starboard_tack_crashes = []
         port_tack_crashes = []
-        window_queue = deque(range(params["window_size"]))
-        window = list(window_queue)
-        is_moving = np.mean(df["speed_mph"][window]) >= (params["stopped_threshold_mph"] + params["moving_threshold_mph"])/2
-        tack = np.median(df["tack_raw"][window])
-        df["is_moving"] = 0
-        df["tack"] = 0
+        window = range(params["window_size"])
+        #is_moving = np.mean(df["speed_mph"][window]) >= (params["stopped_threshold_mph"] + params["moving_threshold_mph"])/2
+        #tack = np.median(df["tack_raw"][window])
+        #df["is_moving"] = 0
+        #df["tack"] = 0
+        speed_mph = df["speed_mph"].values
+        tack_raw = df["tack_raw"].values
+        is_moving = np.zeros(len(df))
+        tack = np.zeros(len(df))
+        is_moving[:params["window_size"]] = 1 if (np.mean(speed_mph[window]) >= (params["stopped_threshold_mph"] + params["moving_threshold_mph"])/2) else 0
+        tack[:params["window_size"]] = np.median(tack_raw[window])
+
         crash_data = []
 
-        for i in range(len(df)):
-            window_queue.popleft()
-            window_queue.append(i)
-            window = list(window_queue)
+        for i in range(1, len(df)):
+            window = range(min(i, len(df)-params["window_size"]), min(i+params["window_size"], len(df)))
             window_speed_mph = np.mean(df["speed_mph"][window])
-            if is_moving==True:
-                df.at[i,"is_moving"]=1
-                if len(set(df["tack_raw"][window]))==1: # only update tack if consistent across the window
-                    tack = np.median(df["tack_raw"][window])
-                    df.loc[max(i-params["window_size"]+1,0):i,"tack"]=tack # if we're updating tack, scroll back that update earlier in time
-                df.at[i,"tack"]=tack
+            if is_moving[i-1]==1:
+                is_moving[i]=1
+                if (tack[i-1]!=tack_raw[i]) and (len(set(tack_raw[window]))==1): # only update tack if consistent across the window
+                    # if we're updating tack, scroll back that update earlier in time
+                    tack[max(i-params["window_size"]+1,0):i] = np.median(tack_raw[window]) 
+                tack[i] = tack[i-1]
                 if window_speed_mph>params["stopped_threshold_mph"]:
                     cnt += 1
                 else:
-                    is_moving=False
+                    is_moving[i]=0
                     moving_segments.append(cnt)
                     crashes.append(i)
-                    df.loc[max(i-2*params["window_size"],0):i,"is_moving"]=0 # Reset time before crash to not moving to clean up data
+                    is_moving[max(i-2*params["window_size"],0):i]=0 # Reset time before crash to not moving to clean up data
                     
-                    tack_before_crash = df.loc[max(i-2*params["window_size"],0),"tack"]
+                    tack_before_crash = tack[max(i-2*params["window_size"],0)]
                     upwind_before_crash = df.loc[max(i-2*params["window_size"],0),"upwind"]
                     if tack_before_crash==0:
-                        tack_before_crash = np.median([x for x in df.loc[max(i-2*params["window_size"],0):i,"tack"] if x!=0])
+                        tack_before_crash = np.median([x for x in tack[max(i-2*params["window_size"],0):i] if x!=0])
                     if tack_before_crash==1: # port tack
                         port_tack_crashes.append(i)
                     else:
@@ -212,16 +224,20 @@ class KiteFoilSession():
                                        "port" if tack_before_crash==1 else "starboard",
                                        "upwind" if upwind_before_crash==1 else "downwind"])
                     
-                    df.loc[max(i-2*params["window_size"],0):i,"tack"]=0 # Reset time before crash to not on a tack to clean up data
+                    tack[max(i-2*params["window_size"],0):i]=0 # Reset time before crash to not on a tack to clean up data
                     cnt=1
-            if is_moving==False:
+            else:
                 if window_speed_mph<params["moving_threshold_mph"]:
                     cnt += 1
                 else:
-                    is_moving=True
+                    is_moving[i] = 1
                     stopped_segments.append(cnt)
                     cnt=1
-        
+        df["is_moving"] = is_moving
+        df["tack"] = tack
+
+        print("233 Elapsed: %s" % (time.time()-t))
+
         crashes_df = pd.DataFrame(data=crash_data, columns=["Loc", "Tack", "Upwind"])
         self.crashes_df = crashes_df
         df["segment"] = 1
@@ -256,7 +272,9 @@ class KiteFoilSession():
                     elif df["upwind"][i]==-1:
                         jibes.append(i)
                 tack=df["tack"][i]
-        
+
+        print("270 Elapsed: %s" % (time.time()-t))
+
         self.df = df
         self.transitions_port = transitions_port
         self.transitions_starboard = transitions_starboard
@@ -286,6 +304,7 @@ class KiteFoilSession():
         stats["num_starboard_to_port_transitions"] = len(transitions_starboard)
         stats["num_port_to_starboard_transitions"] = len(transitions_port)
         self.stats=stats
+        print("301 Elapsed: %s" % (time.time()-t))
 
 
     def windrose(self):
