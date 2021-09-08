@@ -49,14 +49,6 @@ def calculate_initial_compass_bearing(pointA, pointB):
 
     return compass_bearing
 
-def angle_difference(a, b):
-    theta = abs(a-b)%360
-    return theta if theta<=180 else 360-theta
-
-def angle_difference_180(a, b):
-    theta = abs(a-b)%180
-    return theta if theta<=90 else 180-theta
-
 # This chooses a wind direction that is in the middle of the range of directions that are almost-never-travelled
 def calculate_wind_direction(bearing, speed):
     (bearing_density, bins) = np.histogram(bearing, bins=range(360))
@@ -166,7 +158,7 @@ class KiteFoilSession():
         df["speed_kts"] = df["speed_mph"]/1.1507794480235
         df["vmg_kts"] = df["vmg_mph"]/1.1507794480235
                
-        df["upwind"] = [1 if angle_difference(wind_dir, bearing)<90 else -1 for bearing in df["bearing"]]
+        df["upwind"] = np.sign(df["vmg_mph"])
         df["tack_raw"] = [1 if ((bearing-wind_dir) % 360)<180 else -1 for bearing in df["bearing"]]
         
         cnt = 0
@@ -176,10 +168,6 @@ class KiteFoilSession():
         starboard_tack_crashes = []
         port_tack_crashes = []
         window = range(params["window_size"])
-        #is_moving = np.mean(df["speed_mph"][window]) >= (params["stopped_threshold_mph"] + params["moving_threshold_mph"])/2
-        #tack = np.median(df["tack_raw"][window])
-        #df["is_moving"] = 0
-        #df["tack"] = 0
         speed_mph = df["speed_mph"].values
         tack_raw = df["tack_raw"].values
         is_moving = np.zeros(len(df))
