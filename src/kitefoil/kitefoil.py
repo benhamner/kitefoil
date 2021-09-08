@@ -123,7 +123,6 @@ class KiteFoilSession():
     
     def process_gpx_file(self, gpx, params):
         import time
-        print("Start")
         t = time.time()
         if params is None:
             params = {}
@@ -139,8 +138,7 @@ class KiteFoilSession():
                        point.time.astimezone(tz=pytz.timezone("US/Pacific"))] for point in data]
 
         df = pd.DataFrame(data=point_list, columns=['lon', 'lat', 'alt', 'time'])
-        print("142 Elapsed: %s" % (time.time()-t))
-
+        
         df["distance_step"] = [0] + [distance.distance((data[i-1].latitude, data[i-1].longitude),
                                                        (data[i].latitude, data[i].longitude)).m
                                      for i in range(1, len(data))]
@@ -158,9 +156,7 @@ class KiteFoilSession():
         # ideally this would be based on when is_moving=1, but doing this way because I don't have is_moving in the DF yet
         moving_locs = df["speed_mph"]>params["moving_threshold_mph"]
         
-        print("161 Elapsed: %s" % (time.time()-t))
         wind_dir = calculate_wind_direction(df[moving_locs]["bearing"].values, df[moving_locs]["speed_mph"].values)
-        print("163 Elapsed: %s" % (time.time()-t))
         
         self.calculated_wind_dir = wind_dir
         if "wind_dir" in params:
@@ -172,7 +168,6 @@ class KiteFoilSession():
                
         df["upwind"] = [1 if angle_difference(wind_dir, bearing)<90 else -1 for bearing in df["bearing"]]
         df["tack_raw"] = [1 if ((bearing-wind_dir) % 360)<180 else -1 for bearing in df["bearing"]]
-        print("175 Elapsed: %s" % (time.time()-t))
         
         cnt = 0
         stopped_segments = []
@@ -236,19 +231,19 @@ class KiteFoilSession():
         df["is_moving"] = is_moving
         df["tack"] = tack
 
-        print("233 Elapsed: %s" % (time.time()-t))
-
         crashes_df = pd.DataFrame(data=crash_data, columns=["Loc", "Tack", "Upwind"])
         self.crashes_df = crashes_df
-        df["segment"] = 1
+
+        segment = np.ones(len(df))
         this_segment = 1
         for i in range(1, len(df)):
             if df.loc[i-1, "tack"]!=df.loc[i,"tack"]:
                 this_segment+=1
-            df.loc[i, "segment"] = this_segment
-        
-        df["upwind"] = [0 if df["is_moving"][i]==0 else df["upwind"][i] for i in df.index]
-                    
+            segment[i] = this_segment
+        df["segment"] = segment
+
+        df["upwind"] = df["is_moving"]*df["upwind"]
+            
         transitions_port      = []
         transitions_starboard = []
 
@@ -272,8 +267,6 @@ class KiteFoilSession():
                     elif df["upwind"][i]==-1:
                         jibes.append(i)
                 tack=df["tack"][i]
-
-        print("270 Elapsed: %s" % (time.time()-t))
 
         self.df = df
         self.transitions_port = transitions_port
@@ -304,7 +297,6 @@ class KiteFoilSession():
         stats["num_starboard_to_port_transitions"] = len(transitions_starboard)
         stats["num_port_to_starboard_transitions"] = len(transitions_port)
         self.stats=stats
-        print("301 Elapsed: %s" % (time.time()-t))
 
 
     def windrose(self):
