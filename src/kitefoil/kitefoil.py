@@ -134,40 +134,21 @@ class KiteFoilSession():
                        point.latitude,
                        point.elevation,
                        point.time.astimezone(tz=pytz.timezone("US/Pacific"))] for point in data]
+
         df = pd.DataFrame(data=point_list, columns=['lon', 'lat', 'alt', 'time'])
 
-        time_dif = [1]
-        distance_cumulative = [0]
-        distance_step = [0]
-        bearing = [0]
+        df["distance_step"] = [0] + [distance.distance((data[i-1].latitude, data[i-1].longitude),
+                                                       (data[i].latitude, data[i].longitude)).m
+                                     for i in range(1, len(data))]
+        df["distance_cumulative"] = np.cumsum(df["distance_step"])
+        df["time_diff"] = [1] + [(data[i].time - data[i-1].time).total_seconds() for i in range(1, len(data))]
+        df["bearing"] = [0] + [calculate_initial_compass_bearing((data[i-1].latitude, data[i-1].longitude),
+                                                                 (data[i].latitude, data[i].longitude))
+                               for i in range(1, len(data))]
 
-        for index in range(len(data)):
-            if index == 0:
-                pass
-            else:
-                start = data[index-1]        
-                stop = data[index]
-
-                this_step_distance = distance.distance((start.latitude, start.longitude), (stop.latitude, stop.longitude)).m
-                distance_step.append(this_step_distance)
-
-                distance_cumulative.append(distance_cumulative[-1] + this_step_distance)
-
-                time_delta = (stop.time - start.time).total_seconds()
-                time_dif.append(time_delta)
-
-                bearing.append(calculate_initial_compass_bearing((start.latitude, start.longitude), (stop.latitude, stop.longitude)))
-
-        df['distance_cumulative'] = distance_cumulative
-        df['distance_step'] = distance_step
-        df['time_diff'] = time_dif
         df['speed_mph'] = df['distance_step']/df['time_diff']*3600/1609
-        df['bearing'] = bearing
         df["speed_mph_capped"] = df["speed_mph"]
         df.loc[df["speed_mph"]>40,"speed_mph_capped"]=40
-
-        df["wind"]=df["bearing"]+90
-        df.loc[df["bearing"]>180, "wind"]=df["bearing"][df["bearing"]>180]-90
         df['time_elapsed_sec'] = np.cumsum(df['time_diff'])-1
         
         # ideally this would be based on when is_moving=1, but doing this way because I don't have is_moving in the DF yet
