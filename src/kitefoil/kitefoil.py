@@ -91,8 +91,8 @@ def maneuvers(speed_mph, tack_raw, upwind, params):
                     starboard_crashes.append(i)
 
                 crash_data.append([i,
-                                    "port" if tack_before_crash==1 else "starboard",
-                                    "upwind" if upwind_before_crash==1 else "downwind"])
+                                    "Port" if tack_before_crash==1 else "Starboard",
+                                    "Upwind" if upwind_before_crash==1 else "Downwind"])
                 
                 tack[max(i-2*params["window_size"],0):i]=0 # Reset time before crash to not on a tack to clean up data
                 cnt=1
@@ -210,9 +210,7 @@ class KiteFoilSession():
         df.loc[df["speed_mph"]>40,"speed_mph_capped"]=40
         df['time_elapsed_sec'] = np.cumsum(df['time_diff'])-1
         
-        # ideally this would be based on when is_moving=1, but doing this way because I don't have is_moving in the DF yet
         moving_locs = df["speed_mph"]>params["moving_threshold_mph"]
-        
         wind_dir = wind_direction(df[moving_locs]["bearing"].values, df[moving_locs]["speed_mph"].values)
         
         self.calculated_wind_dir = wind_dir
@@ -251,6 +249,7 @@ class KiteFoilSession():
             
         transitions_port      = []
         transitions_starboard = []
+        transitions = []
 
         tack = df["tack"][0]
         
@@ -263,19 +262,26 @@ class KiteFoilSession():
                     transitions_port.append(i)
                     if df["upwind"][i]==1:
                         tacks.append(i)
+                        transitions.append([i, "Port", "Tack"])
                     elif df["upwind"][i]==-1:
                         jibes.append(i)
+                        transitions.append([i, "Port", "Jibe"])
                 if tack==-1 and df["tack"][i]==1:
                     transitions_starboard.append(i)
                     if df["upwind"][i]==1:
                         tacks.append(i)
+                        transitions.append([i, "Starboard", "Tack"])
                     elif df["upwind"][i]==-1:
                         jibes.append(i)
+                        transitions.append([i, "Starboard", "Jibe"])
                 tack=df["tack"][i]
+        
+        transitions_df = pd.DataFrame(data=transitions, columns=["Loc", "Tack", "Maneuver"])
 
         self.df = df
         self.transitions_port = transitions_port
         self.transitions_starboard = transitions_starboard
+        self.transitions_df = transitions_df
         self.stopped_segments = stopped_segments
         self.moving_segments = moving_segments
         self.crashes = crashes
@@ -301,8 +307,19 @@ class KiteFoilSession():
         stats["port_transition_success_percent"] = 100.0*len(self.transitions_port)/(len(self.port_crashes)+len(self.transitions_port))
         stats["num_starboard_to_port_transitions"] = len(transitions_starboard)
         stats["num_port_to_starboard_transitions"] = len(transitions_port)
+        stats["port_tack_success_percent"] = 100.0*len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Port")]) / (
+            len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Port")]) +
+            len(crashes_df[(crashes_df["Upwind"]=="Upwind") & (crashes_df["Tack"]=="Port")]))
+        stats["starboard_tack_success_percent"] = 100.0*len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Starboard")]) / (
+            len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Starboard")]) +
+            len(crashes_df[(crashes_df["Upwind"]=="Upwind") & (crashes_df["Tack"]=="Starboard")]))
+        stats["port_jibe_success_percent"] = 100.0*len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Port")]) / (
+            len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Port")]) +
+            len(crashes_df[(crashes_df["Upwind"]=="Downwind") & (crashes_df["Tack"]=="Port")]))
+        stats["starboard_jibe_success_percent"] = 100.0*len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Starboard")]) / (
+            len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Starboard")]) +
+            len(crashes_df[(crashes_df["Upwind"]=="Downwind") & (crashes_df["Tack"]=="Starboard")]))
         self.stats=stats
-
 
     def windrose(self):
         n = int(len(self.df))
