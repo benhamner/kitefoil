@@ -291,34 +291,35 @@ class KiteFoilSession():
         self.jibes = jibes
         
         stats = {}
-        stats["start_time"] = df["time"].min()
-        stats["stop_time"]  = df["time"].max()
-        stats["duration"] = df["time"].max()-df["time"].min()
-        num_crashes = len(stopped_segments)
-        stats["num_crashes"] = num_crashes
-        stats["num_starboard_tack_crashes"] = len(starboard_crashes)
-        stats["num_port_tack_crashes"] = len(port_crashes)
-        time_elapsed_minutes = (max(df["time"])-min(df["time"])).seconds/60.0
-        stats["time_elapsed_minutes"] = time_elapsed_minutes
-        stats["minutes_per_crash"] = time_elapsed_minutes / num_crashes
-        successful_transitions = len(self.transitions_port)+len(self.transitions_starboard)
-        stats["transition_success_percent"] = 100.0*successful_transitions/(successful_transitions+num_crashes)
-        stats["starboard_transition_success_percent"] = 100.0*len(self.transitions_starboard)/(len(self.starboard_crashes)+len(transitions_starboard))
-        stats["port_transition_success_percent"] = 100.0*len(self.transitions_port)/(len(self.port_crashes)+len(self.transitions_port))
-        stats["num_starboard_to_port_transitions"] = len(transitions_starboard)
-        stats["num_port_to_starboard_transitions"] = len(transitions_port)
-        stats["port_tack_success_percent"] = 100.0*len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Port")]) / (
-            len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Port")]) +
-            len(crashes_df[(crashes_df["Upwind"]=="Upwind") & (crashes_df["Tack"]=="Port")]))
-        stats["starboard_tack_success_percent"] = 100.0*len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Starboard")]) / (
-            len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Starboard")]) +
-            len(crashes_df[(crashes_df["Upwind"]=="Upwind") & (crashes_df["Tack"]=="Starboard")]))
-        stats["port_jibe_success_percent"] = 100.0*len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Port")]) / (
-            len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Port")]) +
-            len(crashes_df[(crashes_df["Upwind"]=="Downwind") & (crashes_df["Tack"]=="Port")]))
-        stats["starboard_jibe_success_percent"] = 100.0*len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Starboard")]) / (
-            len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Starboard")]) +
-            len(crashes_df[(crashes_df["Upwind"]=="Downwind") & (crashes_df["Tack"]=="Starboard")]))
+        with np.errstate(invalid="ignore"):
+            stats["start_time"] = df["time"].min()
+            stats["stop_time"]  = df["time"].max()
+            stats["duration"] = df["time"].max()-df["time"].min()
+            num_crashes = len(stopped_segments)
+            stats["num_crashes"] = num_crashes
+            stats["num_starboard_tack_crashes"] = len(starboard_crashes)
+            stats["num_port_tack_crashes"] = len(port_crashes)
+            time_elapsed_minutes = (max(df["time"])-min(df["time"])).seconds/60.0
+            stats["time_elapsed_minutes"] = time_elapsed_minutes
+            stats["minutes_per_crash"] = time_elapsed_minutes / num_crashes
+            successful_transitions = len(self.transitions_port)+len(self.transitions_starboard)
+            stats["transition_success_percent"] = np.float64(100)*successful_transitions/(successful_transitions+num_crashes)
+            stats["starboard_transition_success_percent"] = np.float64(100)*len(self.transitions_starboard)/(len(self.starboard_crashes)+len(transitions_starboard))
+            stats["port_transition_success_percent"] = np.float64(100)*len(self.transitions_port)/(len(self.port_crashes)+len(self.transitions_port))
+            stats["num_starboard_to_port_transitions"] = len(transitions_starboard)
+            stats["num_port_to_starboard_transitions"] = len(transitions_port)
+            stats["port_tack_success_percent"] = np.float64(100)*len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Port")]) / (
+                len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Port")]) +
+                len(crashes_df[(crashes_df["Upwind"]=="Upwind") & (crashes_df["Tack"]=="Port")]))
+            stats["starboard_tack_success_percent"] = np.float64(100)*len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Starboard")]) / (
+                len(transitions_df[(transitions_df["Maneuver"]=="Tack") & (transitions_df["Tack"]=="Starboard")]) +
+                len(crashes_df[(crashes_df["Upwind"]=="Upwind") & (crashes_df["Tack"]=="Starboard")]))
+            stats["port_jibe_success_percent"] = np.float64(100)*len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Port")]) / (
+                len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Port")]) +
+                len(crashes_df[(crashes_df["Upwind"]=="Downwind") & (crashes_df["Tack"]=="Port")]))
+            stats["starboard_jibe_success_percent"] = np.float64(100)*len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Starboard")]) / (
+                len(transitions_df[(transitions_df["Maneuver"]=="Jibe") & (transitions_df["Tack"]=="Starboard")]) +
+                len(crashes_df[(crashes_df["Upwind"]=="Downwind") & (crashes_df["Tack"]=="Starboard")]))
         self.stats=stats
 
     def windrose(self):
